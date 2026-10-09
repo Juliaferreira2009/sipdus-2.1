@@ -8,54 +8,45 @@
 #include <math.h>
 
 // =====================================================
-// CONFIGURACAO GERAL
+// CONFIGURACAO DO DISPLAY
 // =====================================================
 
-#define SCREEN_WIDTH       320
-#define SCREEN_HEIGHT      240
-#define BUFFER_LINES       20
-#define MAX_MEASUREMENTS   20
-
-// =====================================================
-// CORES
-// =====================================================
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 240
+#define BUFFER_LINES 20
+#define MAX_MEASUREMENTS 10
 
 #define COLOR_YELLOW       0xE3C82B
+#define COLOR_YELLOW_DARK  0xBFA624
 #define COLOR_WHITE        0xFFFFFF
 #define COLOR_BLACK        0x000000
-#define COLOR_BACKGROUND   0xF7F7F7
-#define COLOR_TEXT         0x333333
-#define COLOR_TEXT_LIGHT   0x666666
-#define COLOR_TEXT_GRAY    0x777777
+#define COLOR_BACKGROUND   0xF5F6FA
+#define COLOR_TEXT         0x25283D
+#define COLOR_TEXT_LIGHT   0x686D82
+#define COLOR_TEXT_GRAY    0x9297A8
+#define COLOR_BORDER       0xE6E8F0
+#define COLOR_GREEN        0x27AE78
+#define COLOR_CARD         0xFFFFFF
+
+#define SPLASH_MS 10000UL
 
 // =====================================================
-// SPLASH / CALIBRACAO
+// PINOS TOUCHSCREEN
 // =====================================================
 
-#define SPLASH_MS          10000UL
+#define XPT2046_IRQ 36
+#define XPT2046_MOSI 32
+#define XPT2046_MISO 39
+#define XPT2046_CLK 25
+#define XPT2046_CS 33
 
-// Spinner nativo do LVGL
-#define SPINNER_SIZE       64
-#define SPINNER_TIME       2000
-#define SPINNER_ARC_LENGTH 60
-
-// =====================================================
-// TOUCH
-// =====================================================
-
-#define XPT2046_IRQ        36
-#define XPT2046_MOSI       32
-#define XPT2046_MISO       39
-#define XPT2046_CLK        25
-#define XPT2046_CS         33
-
-#define TOUCH_X_MIN        200
-#define TOUCH_X_MAX        3700
-#define TOUCH_Y_MIN        240
-#define TOUCH_Y_MAX        3800
+#define TOUCH_X_MIN 200
+#define TOUCH_X_MAX 3700
+#define TOUCH_Y_MIN 240
+#define TOUCH_Y_MAX 3800
 
 // =====================================================
-// VARIAVEIS GLOBAIS DO INO
+// VARIAVEIS GLOBAIS DO PROJETO
 // =====================================================
 
 extern int latest_bpm;
@@ -63,7 +54,7 @@ extern float latest_spo2;
 extern float latest_glucose;
 
 // =====================================================
-// HARDWARE
+// OBJETOS DE HARDWARE
 // =====================================================
 
 static SPIClass touchscreenSPI = SPIClass(VSPI);
@@ -75,65 +66,47 @@ static XPT2046_Touchscreen touchscreen(
 
 static TFT_eSPI tft = TFT_eSPI();
 
-// =====================================================
-// BUFFER LVGL
-// =====================================================
-
 static lv_disp_draw_buf_t draw_buf;
-
-static lv_color_t buf1[
-    SCREEN_WIDTH * BUFFER_LINES
-];
+static lv_color_t buf1[SCREEN_WIDTH * BUFFER_LINES];
 
 // =====================================================
-// TELAS
+// TELAS E OBJETOS LVGL
 // =====================================================
 
-static lv_obj_t* scr_splash  = NULL;
-static lv_obj_t* scr_main    = NULL;
+static lv_obj_t* scr_splash = NULL;
+static lv_obj_t* scr_main = NULL;
 static lv_obj_t* scr_history = NULL;
 
-// =====================================================
-// OBJETOS DO SPLASH
-// =====================================================
-
 static lv_obj_t* spinner = NULL;
+
 static lv_obj_t* label_loading = NULL;
-static lv_obj_t* label_subtitle = NULL;
+static lv_obj_t* label_loading_subtitle = NULL;
 
-// =====================================================
-// ELEMENTOS DA TELA PRINCIPAL
-// =====================================================
-
-static lv_obj_t* label_bpm     = NULL;
-static lv_obj_t* label_spo2    = NULL;
+static lv_obj_t* label_bpm = NULL;
+static lv_obj_t* label_spo2 = NULL;
 static lv_obj_t* label_glucose = NULL;
 static lv_obj_t* label_counter = NULL;
 
+static lv_obj_t* history_title = NULL;
+static lv_obj_t* history_count_label = NULL;
+static lv_obj_t* history_average = NULL;
+static lv_obj_t* history_average_caption = NULL;
+static lv_obj_t* history_chart = NULL;
+static lv_chart_series_t* history_series = NULL;
+static lv_obj_t* history_empty_label = NULL;
+
+static lv_obj_t* history_average_card = NULL;
+static lv_obj_t* history_chart_card = NULL;
+
 // =====================================================
-// HISTORICO
+// DADOS DAS AFERICOES
 // =====================================================
 
 static float glucose_history[MAX_MEASUREMENTS] = {0};
 
 static int measurement_count = 0;
 
-static lv_obj_t* history_title   = NULL;
-static lv_obj_t* history_average = NULL;
-static lv_obj_t* history_chart   = NULL;
-
-static lv_chart_series_t* history_series = NULL;
-
-// =====================================================
-// CONTROLE DO SPLASH
-// =====================================================
-
 static unsigned long splash_start_ms = 0;
-static bool splash_finished = false;
-
-// =====================================================
-// ESTADO DA INTERFACE
-// =====================================================
 
 static bool history_screen_open = false;
 static bool final_screen_shown = false;
@@ -145,42 +118,44 @@ static int last_bpm_displayed = -999;
 static int last_spo2_displayed = -999;
 static int last_glucose_displayed = -999;
 
-// =====================================================
-// TOUCH
-// =====================================================
+static int last_touch_x = 0;
+static int last_touch_y = 0;
 
 static bool touch_was_pressed = false;
 static bool history_touch_request = false;
 
 // =====================================================
-// DECLARACOES
+// PROTOTIPOS
 // =====================================================
 
-void update_history_chart();
-void update_history_average();
-void update_measurement_counter();
-void update_history_screen();
-void check_measurement_completion();
-void open_history_screen();
+static void update_history_chart();
+static void update_history_average();
+static void update_measurement_counter();
+static void update_history_screen();
+static void check_measurement_completion();
 
-void update_sensor_values(int bpm, float spo2);
-void add_glucose_measurement(float glucose);
+static void open_history_screen();
+
+static void update_sensor_values(int bpm, float spo2);
+static void add_glucose_measurement(float glucose);
+
+static void resetHistorico();
+
+static void lv_create_splash();
+static void lv_create_main();
+static void lv_create_history();
 
 // =====================================================
-// DISPLAY FLUSH
+// CALLBACK DO DISPLAY
 // =====================================================
 
-void my_disp_flush(
+static void my_disp_flush(
     lv_disp_drv_t* disp,
     const lv_area_t* area,
     lv_color_t* color_p
-)
-{
-    uint32_t width =
-        area->x2 - area->x1 + 1;
-
-    uint32_t height =
-        area->y2 - area->y1 + 1;
+) {
+    uint32_t width = area->x2 - area->x1 + 1;
+    uint32_t height = area->y2 - area->y1 + 1;
 
     tft.startWrite();
 
@@ -203,22 +178,20 @@ void my_disp_flush(
 }
 
 // =====================================================
-// TOUCHSCREEN
+// LEITURA DO TOUCHSCREEN
 // =====================================================
 
-void touchscreen_read(
+static void touchscreen_read(
     lv_indev_drv_t* indev_driver,
     lv_indev_data_t* data
-)
-{
+) {
     (void)indev_driver;
 
-    if (touchscreen.touched())
-    {
-        TS_Point point = touchscreen.getPoint();
+    if (touchscreen.touched()) {
+        TS_Point p = touchscreen.getPoint();
 
         int x = map(
-            point.x,
+            p.x,
             TOUCH_X_MIN,
             TOUCH_X_MAX,
             0,
@@ -226,7 +199,7 @@ void touchscreen_read(
         );
 
         int y = map(
-            point.y,
+            p.y,
             TOUCH_Y_MIN,
             TOUCH_Y_MAX,
             0,
@@ -236,252 +209,117 @@ void touchscreen_read(
         x = constrain(x, 0, SCREEN_WIDTH - 1);
         y = constrain(y, 0, SCREEN_HEIGHT - 1);
 
-        if (!touch_was_pressed)
-        {
-            Serial.println();
-            Serial.println("========== TOUCH ==========");
+        last_touch_x = x;
+        last_touch_y = y;
 
-            Serial.print("RAW X: ");
-            Serial.println(point.x);
+        if (!touch_was_pressed) {
+            Serial.printf(
+                "Touch: X=%d Y=%d\n",
+                x,
+                y
+            );
 
-            Serial.print("RAW Y: ");
-            Serial.println(point.y);
+            touch_was_pressed = true;
 
-            Serial.print("TELA X: ");
-            Serial.println(x);
-
-            Serial.print("TELA Y: ");
-            Serial.println(y);
-
-            Serial.println("===========================");
-        }
-
-        touch_was_pressed = true;
-
-        // Deteccao de toque no botao HISTORICO.
-        if (
-            scr_main != NULL &&
-            !history_screen_open &&
-            x >= 225 &&
-            y >= 0 &&
-            y <= 45
-        )
-        {
-            history_touch_request = true;
+            // Regiao do botao HISTORICO
+            if (
+                scr_main != NULL &&
+                !history_screen_open &&
+                x >= 220 &&
+                y >= 0 &&
+                y <= 45
+            ) {
+                history_touch_request = true;
+            }
         }
 
         data->point.x = x;
         data->point.y = y;
         data->state = LV_INDEV_STATE_PRESSED;
-    }
-    else
-    {
+
+    } else {
         data->state = LV_INDEV_STATE_RELEASED;
         touch_was_pressed = false;
     }
 }
 
 // =====================================================
-// ABRIR HISTORICO
+// FUNCOES AUXILIARES DE ESTILO
 // =====================================================
 
-void open_history_screen()
-{
-    if (scr_history == NULL)
-    {
-        return;
-    }
-
-    if (history_screen_open)
-    {
-        return;
-    }
-
-    Serial.println();
-    Serial.println(">>> ABRINDO HISTORICO <<<");
-
-    history_screen_open = true;
-    last_history_count = -1;
-
-    update_history_chart();
-    update_history_average();
-
-    lv_scr_load(scr_history);
-
-    Serial.print("Afericoes atuais: ");
-    Serial.println(measurement_count);
-
-    Serial.println("===========================");
-}
-
-// =====================================================
-// EVENTO BOTAO HISTORICO
-// =====================================================
-
-static void history_button_event(lv_event_t* event)
-{
-    if (
-        lv_event_get_code(event) ==
-        LV_EVENT_CLICKED
-    )
-    {
-        Serial.println(
-            "Botao HISTORICO pressionado."
-        );
-
-        open_history_screen();
-    }
-}
-
-// =====================================================
-// EVENTO VOLTAR
-// =====================================================
-
-static void back_button_event(lv_event_t* event)
-{
-    if (
-        lv_event_get_code(event) !=
-        LV_EVENT_CLICKED
-    )
-    {
-        return;
-    }
-
-    Serial.println(
-        "Voltando para tela principal."
+static void style_label(
+    lv_obj_t* label,
+    uint32_t color,
+    const lv_font_t* font
+) {
+    lv_obj_set_style_text_color(
+        label,
+        lv_color_hex(color),
+        0
     );
 
-    history_screen_open = false;
+    lv_obj_set_style_text_font(
+        label,
+        font,
+        0
+    );
+}
 
-    lv_scr_load(scr_main);
+static void remove_scroll(lv_obj_t* obj) {
+    lv_obj_clear_flag(
+        obj,
+        LV_OBJ_FLAG_SCROLLABLE
+    );
+}
+
+static void style_card(
+    lv_obj_t* card,
+    uint32_t background,
+    int radius
+) {
+    lv_obj_set_style_bg_color(
+        card,
+        lv_color_hex(background),
+        0
+    );
+
+    lv_obj_set_style_bg_opa(
+        card,
+        LV_OPA_COVER,
+        0
+    );
+
+    lv_obj_set_style_radius(
+        card,
+        radius,
+        0
+    );
+
+    lv_obj_set_style_border_width(
+        card,
+        0,
+        0
+    );
+
+    lv_obj_set_style_shadow_width(
+        card,
+        0,
+        0
+    );
+
+    remove_scroll(card);
 }
 
 // =====================================================
-// RESET DO HISTORICO
+// BOTAO PADRAO
 // =====================================================
 
-void resetHistorico()
-{
-    measurement_count = 0;
-
-    for (
-        int i = 0;
-        i < MAX_MEASUREMENTS;
-        i++
-    )
-    {
-        glucose_history[i] = 0.0f;
-    }
-
-    last_history_count = -1;
-    last_counter_value = -1;
-
-    last_bpm_displayed = -999;
-    last_spo2_displayed = -999;
-    last_glucose_displayed = -999;
-
-    final_screen_shown = false;
-
-    latest_bpm = 0;
-    latest_spo2 = 0;
-    latest_glucose = 0;
-
-    // Limpar grafico.
-    if (
-        history_series != NULL &&
-        history_chart != NULL
-    )
-    {
-        for (
-            int i = 0;
-            i < MAX_MEASUREMENTS;
-            i++
-        )
-        {
-            lv_chart_set_value_by_id(
-                history_chart,
-                history_series,
-                i,
-                LV_CHART_POINT_NONE
-            );
-        }
-
-        lv_chart_refresh(history_chart);
-    }
-
-    // Limpar media.
-    if (history_average != NULL)
-    {
-        lv_label_set_text(
-            history_average,
-            "Media: -- mg/dL"
-        );
-    }
-
-    // Limpar contador.
-    if (label_counter != NULL)
-    {
-        lv_label_set_text(
-            label_counter,
-            "Afericoes: 0/20"
-        );
-    }
-
-    // Limpar valores exibidos.
-    if (label_bpm != NULL)
-    {
-        lv_label_set_text(label_bpm, "--");
-    }
-
-    if (label_spo2 != NULL)
-    {
-        lv_label_set_text(label_spo2, "--");
-    }
-
-    if (label_glucose != NULL)
-    {
-        lv_label_set_text(label_glucose, "--");
-    }
-
-    Serial.println("Historico resetado.");
-}
-
-// =====================================================
-// EVENTO NOVA SESSAO
-// =====================================================
-
-static void reset_button_event(lv_event_t* event)
-{
-    if (
-        lv_event_get_code(event) !=
-        LV_EVENT_CLICKED
-    )
-    {
-        return;
-    }
-
-    Serial.println("Iniciando nova sessao.");
-
-    resetHistorico();
-
-    history_screen_open = false;
-
-    lv_scr_load(scr_main);
-
-    update_measurement_counter();
-}
-
-// =====================================================
-// CRIAR BOTAO
-// =====================================================
-
-lv_obj_t* create_button(
+static lv_obj_t* create_button(
     lv_obj_t* parent,
     const char* text,
     int width,
     int height
-)
-{
+) {
     lv_obj_t* button = lv_btn_create(parent);
 
     lv_obj_set_size(
@@ -492,31 +330,41 @@ lv_obj_t* create_button(
 
     lv_obj_set_style_radius(
         button,
-        12,
+        10,
         0
     );
 
     lv_obj_set_style_bg_color(
         button,
         lv_color_hex(COLOR_YELLOW),
-        0
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_bg_opa(
+        button,
+        LV_OPA_COVER,
+        LV_PART_MAIN
     );
 
     lv_obj_set_style_border_width(
         button,
         0,
-        0
+        LV_PART_MAIN
     );
 
-    lv_obj_clear_flag(
+    lv_obj_set_style_shadow_width(
         button,
-        LV_OBJ_FLAG_SCROLLABLE
+        0,
+        LV_PART_MAIN
     );
 
-    lv_obj_add_flag(
+    lv_obj_set_style_bg_color(
         button,
-        LV_OBJ_FLAG_CLICKABLE
+        lv_color_hex(COLOR_YELLOW_DARK),
+        LV_STATE_PRESSED
     );
+
+    remove_scroll(button);
 
     lv_obj_t* label = lv_label_create(button);
 
@@ -530,7 +378,7 @@ lv_obj_t* create_button(
 
     lv_obj_set_style_text_color(
         label,
-        lv_color_hex(COLOR_WHITE),
+        lv_color_hex(COLOR_TEXT),
         0
     );
 
@@ -540,13 +388,11 @@ lv_obj_t* create_button(
 }
 
 // =====================================================
-// ICONE CORACAO
+// ICONE DE CORACAO
 // =====================================================
 
-void draw_heart_icon(lv_obj_t* parent)
-{
-    static lv_point_t points[] =
-    {
+static void draw_heart_icon(lv_obj_t* parent) {
+    static lv_point_t points[] = {
         {17, 27},
         {5, 15},
         {5, 9},
@@ -574,19 +420,83 @@ void draw_heart_icon(lv_obj_t* parent)
         0
     );
 
-    lv_obj_set_style_line_width(line, 2, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
+    lv_obj_set_style_line_width(
+        line,
+        2,
+        0
+    );
+
+    lv_obj_set_style_line_rounded(
+        line,
+        true,
+        0
+    );
+
     lv_obj_center(line);
 }
 
 // =====================================================
-// ICONE GOTA
+// ICONE DE OXIGENIO
 // =====================================================
 
-void draw_drop_icon(lv_obj_t* parent)
-{
-    static lv_point_t points[] =
-    {
+static void draw_oxygen_icon(lv_obj_t* parent) {
+    lv_obj_t* circle = lv_obj_create(parent);
+
+    lv_obj_set_size(circle, 27, 27);
+
+    lv_obj_center(circle);
+
+    lv_obj_set_style_radius(
+        circle,
+        LV_RADIUS_CIRCLE,
+        0
+    );
+
+    lv_obj_set_style_bg_opa(
+        circle,
+        LV_OPA_TRANSP,
+        0
+    );
+
+    lv_obj_set_style_border_color(
+        circle,
+        lv_color_hex(COLOR_WHITE),
+        0
+    );
+
+    lv_obj_set_style_border_width(
+        circle,
+        2,
+        0
+    );
+
+    remove_scroll(circle);
+
+    lv_obj_t* label = lv_label_create(circle);
+
+    lv_label_set_text(label, "O2");
+
+    lv_obj_set_style_text_font(
+        label,
+        &lv_font_montserrat_10,
+        0
+    );
+
+    lv_obj_set_style_text_color(
+        label,
+        lv_color_hex(COLOR_WHITE),
+        0
+    );
+
+    lv_obj_center(label);
+}
+
+// =====================================================
+// ICONE DE GOTA
+// =====================================================
+
+static void draw_drop_icon(lv_obj_t* parent) {
+    static lv_point_t points[] = {
         {17, 3},
         {9, 14},
         {7, 19},
@@ -614,83 +524,32 @@ void draw_drop_icon(lv_obj_t* parent)
         0
     );
 
-    lv_obj_set_style_line_width(line, 2, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
+    lv_obj_set_style_line_width(
+        line,
+        2,
+        0
+    );
+
+    lv_obj_set_style_line_rounded(
+        line,
+        true,
+        0
+    );
+
     lv_obj_center(line);
 }
 
 // =====================================================
-// ICONE O2
+// CRIACAO DOS CARDS DE MONITORAMENTO
 // =====================================================
 
-void draw_oxygen_icon(lv_obj_t* parent)
-{
-    lv_obj_t* circle = lv_obj_create(parent);
-
-    lv_obj_set_size(circle, 27, 27);
-    lv_obj_center(circle);
-
-    lv_obj_set_style_radius(
-        circle,
-        LV_RADIUS_CIRCLE,
-        0
-    );
-
-    lv_obj_set_style_bg_opa(
-        circle,
-        LV_OPA_TRANSP,
-        0
-    );
-
-    lv_obj_set_style_border_width(circle, 2, 0);
-
-    lv_obj_set_style_border_color(
-        circle,
-        lv_color_hex(COLOR_WHITE),
-        0
-    );
-
-    lv_obj_clear_flag(
-        circle,
-        LV_OBJ_FLAG_CLICKABLE
-    );
-
-    lv_obj_clear_flag(
-        circle,
-        LV_OBJ_FLAG_SCROLLABLE
-    );
-
-    lv_obj_t* label = lv_label_create(parent);
-
-    lv_label_set_text(label, "O2");
-
-    lv_obj_set_style_text_font(
-        label,
-        &lv_font_montserrat_10,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        label,
-        lv_color_hex(COLOR_WHITE),
-        0
-    );
-
-    lv_obj_center(label);
-}
-
-// =====================================================
-// CRIAR CARD
-// =====================================================
-
-lv_obj_t* create_card(
+static lv_obj_t* create_card(
     lv_obj_t* parent,
     int icon_type,
     const char* title,
     const char* unit,
     int y
-)
-{
+) {
     lv_obj_t* card = lv_obj_create(parent);
 
     lv_obj_set_size(card, 290, 48);
@@ -702,21 +561,7 @@ lv_obj_t* create_card(
         y
     );
 
-    lv_obj_set_style_radius(card, 14, 0);
-
-    lv_obj_set_style_bg_color(
-        card,
-        lv_color_hex(COLOR_WHITE),
-        0
-    );
-
-    lv_obj_set_style_border_width(card, 0, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
-
-    lv_obj_clear_flag(
-        card,
-        LV_OBJ_FLAG_SCROLLABLE
-    );
+    style_card(card, COLOR_CARD, 14);
 
     lv_obj_t* icon_bg = lv_obj_create(card);
 
@@ -725,11 +570,9 @@ lv_obj_t* create_card(
     lv_obj_align(
         icon_bg,
         LV_ALIGN_LEFT_MID,
-        7,
+        0,
         0
     );
-
-    lv_obj_set_style_radius(icon_bg, 9, 0);
 
     lv_obj_set_style_bg_color(
         icon_bg,
@@ -737,127 +580,106 @@ lv_obj_t* create_card(
         0
     );
 
-    lv_obj_set_style_border_width(icon_bg, 0, 0);
-
-    lv_obj_clear_flag(
+    lv_obj_set_style_bg_opa(
         icon_bg,
-        LV_OBJ_FLAG_SCROLLABLE
+        LV_OPA_COVER,
+        0
     );
 
-    lv_obj_clear_flag(
+    lv_obj_set_style_border_width(
         icon_bg,
-        LV_OBJ_FLAG_CLICKABLE
+        0,
+        0
     );
 
-    if (icon_type == 0)
-    {
+    lv_obj_set_style_radius(
+        icon_bg,
+        10,
+        0
+    );
+
+    remove_scroll(icon_bg);
+
+    if (icon_type == 0) {
         draw_heart_icon(icon_bg);
-    }
-    else if (icon_type == 1)
-    {
+    } else if (icon_type == 1) {
         draw_oxygen_icon(icon_bg);
-    }
-    else
-    {
+    } else {
         draw_drop_icon(icon_bg);
     }
 
-    lv_obj_t* lbl_title = lv_label_create(card);
+    lv_obj_t* title_label = lv_label_create(card);
 
-    lv_label_set_text(lbl_title, title);
+    lv_label_set_text(title_label, title);
 
-    lv_obj_set_style_text_font(
-        lbl_title,
-        &lv_font_montserrat_14,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        lbl_title,
-        lv_color_hex(0x444444),
-        0
+    style_label(
+        title_label,
+        COLOR_TEXT,
+        &lv_font_montserrat_14
     );
 
     lv_obj_align(
-        lbl_title,
+        title_label,
         LV_ALIGN_LEFT_MID,
-        50,
+        43,
         0
     );
 
-    lv_obj_t* lbl_value = lv_label_create(card);
+    lv_obj_t* value_label = lv_label_create(card);
 
-    lv_label_set_text(lbl_value, "--");
+    lv_label_set_text(value_label, "--");
 
-    lv_obj_set_style_text_font(
-        lbl_value,
-        &lv_font_montserrat_20,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        lbl_value,
-        lv_color_hex(COLOR_YELLOW),
-        0
+    style_label(
+        value_label,
+        COLOR_YELLOW_DARK,
+        &lv_font_montserrat_20
     );
 
     lv_obj_align(
-        lbl_value,
+        value_label,
         LV_ALIGN_RIGHT_MID,
-        -42,
-        -5
+        -38,
+        -3
     );
 
-    lv_obj_t* lbl_unit = lv_label_create(card);
+    lv_obj_t* unit_label = lv_label_create(card);
 
-    lv_label_set_text(lbl_unit, unit);
+    lv_label_set_text(unit_label, unit);
 
-    lv_obj_set_style_text_font(
-        lbl_unit,
-        &lv_font_montserrat_10,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        lbl_unit,
-        lv_color_hex(COLOR_TEXT_GRAY),
-        0
+    style_label(
+        unit_label,
+        COLOR_TEXT_GRAY,
+        &lv_font_montserrat_10
     );
 
     lv_obj_align(
-        lbl_unit,
+        unit_label,
         LV_ALIGN_RIGHT_MID,
-        -8,
-        10
+        -2,
+        12
     );
 
-    return lbl_value;
+    return value_label;
 }
 
 // =====================================================
-// SPLASH / CALIBRACAO COM SPINNER NATIVO LVGL
+// TELA DE CARREGAMENTO
+// Spinner e textos mais centralizados
 // =====================================================
 
-void lv_create_splash()
-{
+static void lv_create_splash() {
     scr_splash = lv_obj_create(NULL);
-
-    lv_obj_set_size(
-        scr_splash,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT
-    );
 
     lv_obj_set_style_bg_color(
         scr_splash,
         lv_color_hex(COLOR_WHITE),
-        LV_PART_MAIN
+        0
     );
 
     lv_obj_set_style_bg_opa(
         scr_splash,
         LV_OPA_COVER,
-        LV_PART_MAIN
+        0
     );
 
     lv_obj_set_style_border_width(
@@ -866,66 +688,9 @@ void lv_create_splash()
         0
     );
 
-    lv_obj_clear_flag(
-        scr_splash,
-        LV_OBJ_FLAG_SCROLLABLE
-    );
+    remove_scroll(scr_splash);
 
-    // =================================================
-    // SPINNER NATIVO DO SEGUNDO CODIGO
-    // =================================================
-
-    spinner = lv_spinner_create(
-        scr_splash,
-        SPINNER_TIME,
-        SPINNER_ARC_LENGTH
-    );
-
-    lv_obj_set_size(
-        spinner,
-        SPINNER_SIZE,
-        SPINNER_SIZE
-    );
-
-    // Posicao adaptada para a tela 320 x 240.
-    lv_obj_align(
-        spinner,
-        LV_ALIGN_CENTER,
-        0,
-        -65
-    );
-
-    // Cor do arco de fundo.
-    lv_obj_set_style_arc_color(
-        spinner,
-        lv_color_hex(0xE3C82B),
-        LV_PART_MAIN
-    );
-
-    // Cor do arco animado.
-    lv_obj_set_style_arc_color(
-        spinner,
-        lv_color_hex(0xBFA624),
-        LV_PART_INDICATOR
-    );
-
-    // Espessura dos arcos.
-    lv_obj_set_style_arc_width(
-        spinner,
-        6,
-        LV_PART_MAIN
-    );
-
-    lv_obj_set_style_arc_width(
-        spinner,
-        6,
-        LV_PART_INDICATOR
-    );
-
-    // =================================================
-    // TITULO
-    // =================================================
-
+    // Titulo um pouco mais abaixo e equilibrado
     label_loading = lv_label_create(scr_splash);
 
     lv_label_set_text(
@@ -933,60 +698,87 @@ void lv_create_splash()
         "CALIBRANDO..."
     );
 
-    lv_obj_set_style_text_font(
+    style_label(
         label_loading,
-        &lv_font_montserrat_26,
-        0
+        COLOR_YELLOW_DARK,
+        &lv_font_montserrat_26
     );
 
     lv_obj_align(
         label_loading,
         LV_ALIGN_CENTER,
         0,
-        -10
+        -65
     );
 
-    lv_obj_set_style_text_color(
-        label_loading,
+    // Spinner animado nativo do LVGL
+    spinner = lv_spinner_create(
+        scr_splash,
+        2000,
+        60
+    );
+
+    lv_obj_set_size(
+        spinner,
+        64,
+        64
+    );
+
+    lv_obj_align(
+        spinner,
+        LV_ALIGN_CENTER,
+        0,
+        -5
+    );
+
+    lv_obj_set_style_arc_color(
+        spinner,
         lv_color_hex(COLOR_YELLOW),
-        0
+        LV_PART_MAIN
     );
 
-    // =================================================
-    // SUBTITULO
-    // =================================================
+    lv_obj_set_style_arc_color(
+        spinner,
+        lv_color_hex(COLOR_YELLOW_DARK),
+        LV_PART_INDICATOR
+    );
 
-    label_subtitle = lv_label_create(scr_splash);
+    lv_obj_set_style_arc_width(
+        spinner,
+        6,
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_arc_width(
+        spinner,
+        6,
+        LV_PART_INDICATOR
+    );
+
+    label_loading_subtitle = lv_label_create(scr_splash);
 
     lv_label_set_text(
-        label_subtitle,
-        "Aguarde enquanto o dispositivo\n"
-        "realiza a calibracao"
-    );
-
-    lv_obj_set_style_text_font(
-        label_subtitle,
-        &lv_font_montserrat_14,
-        0
+        label_loading_subtitle,
+        "Aguarde enquanto o dispositivo\nrealiza a calibracao"
     );
 
     lv_obj_set_style_text_align(
-        label_subtitle,
+        label_loading_subtitle,
         LV_TEXT_ALIGN_CENTER,
         0
     );
 
-    lv_obj_set_style_text_color(
-        label_subtitle,
-        lv_color_hex(COLOR_TEXT_LIGHT),
-        0
+    style_label(
+        label_loading_subtitle,
+        COLOR_TEXT_LIGHT,
+        &lv_font_montserrat_14
     );
 
     lv_obj_align(
-        label_subtitle,
+        label_loading_subtitle,
         LV_ALIGN_CENTER,
         0,
-        30
+        62
     );
 }
 
@@ -994,8 +786,7 @@ void lv_create_splash()
 // TELA PRINCIPAL
 // =====================================================
 
-void lv_create_main()
-{
+static void lv_create_main() {
     scr_main = lv_obj_create(NULL);
 
     lv_obj_set_style_bg_color(
@@ -1004,56 +795,51 @@ void lv_create_main()
         0
     );
 
-    lv_obj_clear_flag(
+    lv_obj_set_style_bg_opa(
         scr_main,
-        LV_OBJ_FLAG_SCROLLABLE
+        LV_OPA_COVER,
+        0
     );
 
-    // Titulo.
-    lv_obj_t* header = lv_label_create(scr_main);
+    lv_obj_set_style_border_width(
+        scr_main,
+        0,
+        0
+    );
+
+    remove_scroll(scr_main);
+
+    lv_obj_t* title = lv_label_create(scr_main);
 
     lv_label_set_text(
-        header,
+        title,
         "MONITORAMENTO"
     );
 
-    lv_obj_set_style_text_font(
-        header,
-        &lv_font_montserrat_20,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        header,
-        lv_color_hex(COLOR_TEXT),
-        0
+    style_label(
+        title,
+        COLOR_TEXT,
+        &lv_font_montserrat_20
     );
 
     lv_obj_align(
-        header,
+        title,
         LV_ALIGN_TOP_LEFT,
         14,
-        10
+        8
     );
 
-    // Contador.
     label_counter = lv_label_create(scr_main);
 
     lv_label_set_text(
         label_counter,
-        "Afericoes: 0/20"
+        "Afericoes: 0/10"
     );
 
-    lv_obj_set_style_text_font(
+    style_label(
         label_counter,
-        &lv_font_montserrat_12,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        label_counter,
-        lv_color_hex(COLOR_TEXT_GRAY),
-        0
+        COLOR_TEXT_LIGHT,
+        &lv_font_montserrat_12
     );
 
     lv_obj_align(
@@ -1063,8 +849,7 @@ void lv_create_main()
         34
     );
 
-    // Botao historico.
-    lv_obj_t* btn_history = create_button(
+    lv_obj_t* history_button = create_button(
         scr_main,
         "HISTORICO",
         85,
@@ -1072,20 +857,22 @@ void lv_create_main()
     );
 
     lv_obj_align(
-        btn_history,
+        history_button,
         LV_ALIGN_TOP_RIGHT,
         -8,
         6
     );
 
     lv_obj_add_event_cb(
-        btn_history,
-        history_button_event,
+        history_button,
+        [](lv_event_t* e) {
+            (void)e;
+            open_history_screen();
+        },
         LV_EVENT_CLICKED,
         NULL
     );
 
-    // Linha amarela.
     lv_obj_t* line = lv_obj_create(scr_main);
 
     lv_obj_set_size(line, 180, 3);
@@ -1103,14 +890,26 @@ void lv_create_main()
         0
     );
 
-    lv_obj_set_style_border_width(line, 0, 0);
-
-    lv_obj_clear_flag(
+    lv_obj_set_style_bg_opa(
         line,
-        LV_OBJ_FLAG_SCROLLABLE
+        LV_OPA_COVER,
+        0
     );
 
-    // Cards.
+    lv_obj_set_style_border_width(
+        line,
+        0,
+        0
+    );
+
+    lv_obj_set_style_radius(
+        line,
+        2,
+        0
+    );
+
+    remove_scroll(line);
+
     label_bpm = create_card(
         scr_main,
         0,
@@ -1137,11 +936,10 @@ void lv_create_main()
 }
 
 // =====================================================
-// TELA HISTORICO
+// TELA DE HISTORICO - DESIGN REFORMULADO
 // =====================================================
 
-void lv_create_history()
-{
+static void lv_create_history() {
     scr_history = lv_obj_create(NULL);
 
     lv_obj_set_style_bg_color(
@@ -1150,12 +948,21 @@ void lv_create_history()
         0
     );
 
-    lv_obj_clear_flag(
+    lv_obj_set_style_bg_opa(
         scr_history,
-        LV_OBJ_FLAG_SCROLLABLE
+        LV_OPA_COVER,
+        0
     );
 
-    // Titulo.
+    lv_obj_set_style_border_width(
+        scr_history,
+        0,
+        0
+    );
+
+    remove_scroll(scr_history);
+
+    // Cabecalho
     history_title = lv_label_create(scr_history);
 
     lv_label_set_text(
@@ -1163,66 +970,211 @@ void lv_create_history()
         "HISTORICO"
     );
 
-    lv_obj_set_style_text_font(
+    style_label(
         history_title,
-        &lv_font_montserrat_20,
-        0
-    );
-
-    lv_obj_set_style_text_color(
-        history_title,
-        lv_color_hex(COLOR_TEXT),
-        0
+        COLOR_TEXT,
+        &lv_font_montserrat_20
     );
 
     lv_obj_align(
         history_title,
         LV_ALIGN_TOP_LEFT,
-        14,
-        8
+        13,
+        7
     );
 
-    // Media.
-    history_average = lv_label_create(scr_history);
+    // Contador destacado no canto superior direito
+    history_count_label = lv_label_create(scr_history);
 
     lv_label_set_text(
-        history_average,
-        "Media: -- mg/dL"
+        history_count_label,
+        "0/10"
     );
 
-    lv_obj_set_style_text_font(
-        history_average,
-        &lv_font_montserrat_14,
+    style_label(
+        history_count_label,
+        COLOR_YELLOW_DARK,
+        &lv_font_montserrat_14
+    );
+
+    lv_obj_align(
+        history_count_label,
+        LV_ALIGN_TOP_RIGHT,
+        -14,
+        12
+    );
+
+    // Card de media
+    history_average_card = lv_obj_create(scr_history);
+
+    lv_obj_set_size(
+        history_average_card,
+        296,
+        46
+    );
+
+    lv_obj_align(
+        history_average_card,
+        LV_ALIGN_TOP_MID,
+        0,
+        34
+    );
+
+    style_card(
+        history_average_card,
+        COLOR_WHITE,
+        12
+    );
+
+    // Pequena faixa amarela decorativa
+    lv_obj_t* average_accent = lv_obj_create(
+        history_average_card
+    );
+
+    lv_obj_set_size(
+        average_accent,
+        5,
+        28
+    );
+
+    lv_obj_align(
+        average_accent,
+        LV_ALIGN_LEFT_MID,
+        0,
         0
     );
 
-    lv_obj_set_style_text_color(
-        history_average,
+    lv_obj_set_style_bg_color(
+        average_accent,
         lv_color_hex(COLOR_YELLOW),
         0
     );
 
-    lv_obj_align(
-        history_average,
-        LV_ALIGN_TOP_LEFT,
-        14,
-        34
+    lv_obj_set_style_bg_opa(
+        average_accent,
+        LV_OPA_COVER,
+        0
     );
 
-    // Grafico.
-    history_chart = lv_chart_create(scr_history);
+    lv_obj_set_style_border_width(
+        average_accent,
+        0,
+        0
+    );
+
+    lv_obj_set_style_radius(
+        average_accent,
+        3,
+        0
+    );
+
+    remove_scroll(average_accent);
+
+    history_average_caption = lv_label_create(
+        history_average_card
+    );
+
+    lv_label_set_text(
+        history_average_caption,
+        "MEDIA DAS AFERICOES"
+    );
+
+    style_label(
+        history_average_caption,
+        COLOR_TEXT_LIGHT,
+        &lv_font_montserrat_10
+    );
+
+    lv_obj_align(
+        history_average_caption,
+        LV_ALIGN_LEFT_MID,
+        14,
+        -9
+    );
+
+    history_average = lv_label_create(
+        history_average_card
+    );
+
+    lv_label_set_text(
+        history_average,
+        "-- mg/dL"
+    );
+
+    style_label(
+        history_average,
+        COLOR_YELLOW_DARK,
+        &lv_font_montserrat_20
+    );
+
+    lv_obj_align(
+        history_average,
+        LV_ALIGN_LEFT_MID,
+        14,
+        11
+    );
+
+    // Card do grafico
+    history_chart_card = lv_obj_create(scr_history);
+
+    lv_obj_set_size(
+        history_chart_card,
+        296,
+        105
+    );
+
+    lv_obj_align(
+        history_chart_card,
+        LV_ALIGN_TOP_MID,
+        0,
+        86
+    );
+
+    style_card(
+        history_chart_card,
+        COLOR_WHITE,
+        12
+    );
+
+    // Titulo do grafico
+    lv_obj_t* chart_title = lv_label_create(
+        history_chart_card
+    );
+
+    lv_label_set_text(
+        chart_title,
+        "EVOLUCAO DA GLICEMIA"
+    );
+
+    style_label(
+        chart_title,
+        COLOR_TEXT_LIGHT,
+        &lv_font_montserrat_10
+    );
+
+    lv_obj_align(
+        chart_title,
+        LV_ALIGN_TOP_LEFT,
+        3,
+        0
+    );
+
+    // Grafico
+    history_chart = lv_chart_create(
+        history_chart_card
+    );
 
     lv_obj_set_size(
         history_chart,
-        290,
-        90
+        276,
+        72
     );
 
     lv_obj_align(
         history_chart,
-        LV_ALIGN_TOP_MID,
+        LV_ALIGN_BOTTOM_MID,
         0,
-        55
+        -1
     );
 
     lv_chart_set_type(
@@ -1242,22 +1194,40 @@ void lv_create_history()
         240
     );
 
-    lv_obj_set_style_bg_color(
+    lv_chart_set_div_line_count(
         history_chart,
-        lv_color_hex(COLOR_WHITE),
-        0
+        4,
+        5
+    );
+
+    lv_obj_set_style_bg_opa(
+        history_chart,
+        LV_OPA_TRANSP,
+        LV_PART_MAIN
     );
 
     lv_obj_set_style_border_width(
         history_chart,
         0,
-        0
+        LV_PART_MAIN
     );
 
-    lv_obj_set_style_radius(
+    lv_obj_set_style_line_color(
         history_chart,
-        12,
-        0
+        lv_color_hex(COLOR_BORDER),
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_line_width(
+        history_chart,
+        1,
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_line_color(
+        history_chart,
+        lv_color_hex(COLOR_YELLOW_DARK),
+        LV_PART_ITEMS
     );
 
     lv_obj_set_style_line_width(
@@ -1266,18 +1236,43 @@ void lv_create_history()
         LV_PART_ITEMS
     );
 
-    history_series = lv_chart_add_series(
+    lv_obj_set_style_line_rounded(
+        history_chart,
+        true,
+        LV_PART_ITEMS
+    );
+
+    lv_obj_set_style_bg_color(
         history_chart,
         lv_color_hex(COLOR_YELLOW),
+        LV_PART_INDICATOR
+    );
+
+    lv_obj_set_style_bg_opa(
+        history_chart,
+        LV_OPA_COVER,
+        LV_PART_INDICATOR
+    );
+
+    lv_obj_set_style_radius(
+        history_chart,
+        LV_RADIUS_CIRCLE,
+        LV_PART_INDICATOR
+    );
+
+    lv_obj_set_style_border_width(
+        history_chart,
+        0,
+        LV_PART_INDICATOR
+    );
+
+    history_series = lv_chart_add_series(
+        history_chart,
+        lv_color_hex(COLOR_YELLOW_DARK),
         LV_CHART_AXIS_PRIMARY_Y
     );
 
-    for (
-        int i = 0;
-        i < MAX_MEASUREMENTS;
-        i++
-    )
-    {
+    for (int i = 0; i < MAX_MEASUREMENTS; i++) {
         lv_chart_set_value_by_id(
             history_chart,
             history_series,
@@ -1286,48 +1281,139 @@ void lv_create_history()
         );
     }
 
-    // Botao voltar.
-    lv_obj_t* btn_back = create_button(
+    // Mensagem quando nao existem dados
+    history_empty_label = lv_label_create(
+        history_chart_card
+    );
+
+    lv_label_set_text(
+        history_empty_label,
+        "Aguardando afericoes..."
+    );
+
+    lv_obj_set_style_text_color(
+        history_empty_label,
+        lv_color_hex(COLOR_TEXT_GRAY),
+        0
+    );
+
+    lv_obj_set_style_text_font(
+        history_empty_label,
+        &lv_font_montserrat_10,
+        0
+    );
+
+    lv_obj_align(
+        history_empty_label,
+        LV_ALIGN_CENTER,
+        0,
+        13
+    );
+
+    // Botao voltar
+    lv_obj_t* back_button = create_button(
         scr_history,
         "VOLTAR",
-        82,
-        28
+        84,
+        29
     );
 
     lv_obj_align(
-        btn_back,
+        back_button,
         LV_ALIGN_BOTTOM_LEFT,
         12,
-        -8
+        -7
     );
 
     lv_obj_add_event_cb(
-        btn_back,
-        back_button_event,
+        back_button,
+        [](lv_event_t* e) {
+            (void)e;
+
+            history_screen_open = false;
+
+            if (scr_main != NULL) {
+                lv_scr_load(scr_main);
+            }
+        },
         LV_EVENT_CLICKED,
         NULL
     );
 
-    // Botao nova sessao.
-    lv_obj_t* btn_reset = create_button(
+    // Botao nova sessao
+    lv_obj_t* reset_button = create_button(
         scr_history,
         "NOVA SESSAO",
-        105,
-        28
+        112,
+        29
     );
 
     lv_obj_align(
-        btn_reset,
+        reset_button,
         LV_ALIGN_BOTTOM_RIGHT,
         -12,
-        -8
+        -7
     );
 
     lv_obj_add_event_cb(
-        btn_reset,
-        reset_button_event,
+        reset_button,
+        [](lv_event_t* e) {
+            (void)e;
+
+            resetHistorico();
+
+            history_screen_open = false;
+
+            if (scr_main != NULL) {
+                lv_scr_load(scr_main);
+            }
+
+            update_measurement_counter();
+        },
         LV_EVENT_CLICKED,
         NULL
+    );
+}
+
+// =====================================================
+// ABRIR HISTORICO A QUALQUER MOMENTO
+// =====================================================
+
+static void open_history_screen() {
+    if (scr_history == NULL) {
+        return;
+    }
+
+    history_screen_open = true;
+
+    last_history_count = -1;
+
+    // Atualiza o grafico e a media com os dados atuais.
+    update_history_chart();
+    update_history_average();
+
+    if (history_count_label != NULL) {
+        char count_text[16];
+
+        snprintf(
+            count_text,
+            sizeof(count_text),
+            "%d/%d",
+            measurement_count,
+            MAX_MEASUREMENTS
+        );
+
+        lv_label_set_text(
+            history_count_label,
+            count_text
+        );
+    }
+
+    lv_scr_load(scr_history);
+
+    Serial.printf(
+        "Historico aberto: %d afericoes registradas.\n",
+        measurement_count
     );
 }
 
@@ -1335,55 +1421,64 @@ void lv_create_history()
 // CONTADOR DE AFERICOES
 // =====================================================
 
-void update_measurement_counter()
-{
-    if (label_counter == NULL)
-    {
+static void update_measurement_counter() {
+    if (label_counter == NULL) {
         return;
     }
 
-    if (measurement_count == last_counter_value)
-    {
+    if (last_counter_value == measurement_count) {
         return;
     }
 
-    last_counter_value = measurement_count;
-
-    char buffer[32];
+    char text[32];
 
     snprintf(
-        buffer,
-        sizeof(buffer),
-        "Afericoes: %d/20",
-        measurement_count
+        text,
+        sizeof(text),
+        "Afericoes: %d/%d",
+        measurement_count,
+        MAX_MEASUREMENTS
     );
 
     lv_label_set_text(
         label_counter,
-        buffer
+        text
     );
+
+    last_counter_value = measurement_count;
+
+    if (history_count_label != NULL) {
+        char history_text[16];
+
+        snprintf(
+            history_text,
+            sizeof(history_text),
+            "%d/%d",
+            measurement_count,
+            MAX_MEASUREMENTS
+        );
+
+        lv_label_set_text(
+            history_count_label,
+            history_text
+        );
+    }
 }
 
 // =====================================================
-// ATUALIZAR GRAFICO
+// ATUALIZACAO DO GRAFICO
 // =====================================================
 
-void update_history_chart()
-{
+static void update_history_chart() {
     if (
         history_chart == NULL ||
         history_series == NULL
-    )
-    {
+    ) {
         return;
     }
 
-    for (
-        int i = 0;
-        i < MAX_MEASUREMENTS;
-        i++
-    )
-    {
+    // Limpa todos os pontos antigos.
+    for (int i = 0; i < MAX_MEASUREMENTS; i++) {
         lv_chart_set_value_by_id(
             history_chart,
             history_series,
@@ -1392,124 +1487,166 @@ void update_history_chart()
         );
     }
 
-    for (
-        int i = 0;
-        i < measurement_count &&
-        i < MAX_MEASUREMENTS;
-        i++
-    )
-    {
-        int glucose = (int)glucose_history[i];
+    // Insere somente as afericoes existentes.
+    int total = measurement_count;
 
-        glucose = constrain(glucose, 50, 240);
+    if (total > MAX_MEASUREMENTS) {
+        total = MAX_MEASUREMENTS;
+    }
+
+    for (int i = 0; i < total; i++) {
+        int value = (int)roundf(
+            glucose_history[i]
+        );
+
+        // Limites visuais do grafico.
+        if (value < 50) {
+            value = 50;
+        }
+
+        if (value > 240) {
+            value = 240;
+        }
 
         lv_chart_set_value_by_id(
             history_chart,
             history_series,
             i,
-            glucose
+            value
         );
+    }
+
+    // Mostra a mensagem apenas quando nao ha dados.
+    if (history_empty_label != NULL) {
+        if (total == 0) {
+            lv_obj_clear_flag(
+                history_empty_label,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        } else {
+            lv_obj_add_flag(
+                history_empty_label,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        }
     }
 
     lv_chart_refresh(history_chart);
 }
 
 // =====================================================
-// ATUALIZAR MEDIA
+// CALCULO DA MEDIA
 // =====================================================
 
-void update_history_average()
-{
-    if (history_average == NULL)
-    {
+static void update_history_average() {
+    if (history_average == NULL) {
         return;
     }
 
-    char buffer[50];
-
-    if (measurement_count <= 0)
-    {
-        snprintf(
-            buffer,
-            sizeof(buffer),
-            "Media: -- mg/dL"
+    if (measurement_count <= 0) {
+        lv_label_set_text(
+            history_average,
+            "-- mg/dL"
         );
+
+        return;
     }
-    else
-    {
-        float total = 0.0f;
 
-        for (
-            int i = 0;
-            i < measurement_count &&
-            i < MAX_MEASUREMENTS;
-            i++
-        )
-        {
-            total += glucose_history[i];
-        }
+    float sum = 0.0f;
 
-        float average = total / measurement_count;
+    int total = measurement_count;
 
-        snprintf(
-            buffer,
-            sizeof(buffer),
-            "Media: %.1f mg/dL",
-            average
-        );
+    if (total > MAX_MEASUREMENTS) {
+        total = MAX_MEASUREMENTS;
     }
+
+    for (int i = 0; i < total; i++) {
+        sum += glucose_history[i];
+    }
+
+    float average = sum / total;
+
+    char text[32];
+
+    snprintf(
+        text,
+        sizeof(text),
+        "%.1f mg/dL",
+        average
+    );
 
     lv_label_set_text(
         history_average,
-        buffer
+        text
     );
 }
 
 // =====================================================
-// ATUALIZAR BPM / SPO2
+// ATUALIZACAO CONTINUA DO HISTORICO
 // =====================================================
 
-void update_sensor_values(
+static void update_history_screen() {
+    if (!history_screen_open) {
+        return;
+    }
+
+    if (last_history_count != measurement_count) {
+        update_history_chart();
+        update_history_average();
+        update_measurement_counter();
+
+        last_history_count = measurement_count;
+    }
+}
+
+// =====================================================
+// ATUALIZAR BPM E SPO2
+// =====================================================
+
+static void update_sensor_values(
     int bpm,
     float spo2
-)
-{
+) {
     if (
         label_bpm != NULL &&
         bpm != last_bpm_displayed
-    )
-    {
-        char buffer[16];
+    ) {
+        char text[16];
 
         snprintf(
-            buffer,
-            sizeof(buffer),
+            text,
+            sizeof(text),
             "%d",
             bpm
         );
 
-        lv_label_set_text(label_bpm, buffer);
+        lv_label_set_text(
+            label_bpm,
+            text
+        );
 
         last_bpm_displayed = bpm;
     }
 
-    int spo2_int = (int)spo2;
+    int spo2_int = (int)roundf(spo2);
 
     if (
         label_spo2 != NULL &&
         spo2_int != last_spo2_displayed
-    )
-    {
-        char buffer[16];
+    ) {
+        char text[16];
 
         snprintf(
-            buffer,
-            sizeof(buffer),
+            text,
+            sizeof(text),
             "%d",
             spo2_int
         );
 
-        lv_label_set_text(label_spo2, buffer);
+        lv_label_set_text(
+            label_spo2,
+            text
+        );
 
         last_spo2_displayed = spo2_int;
     }
@@ -1521,116 +1658,190 @@ void update_sensor_values(
 }
 
 // =====================================================
-// ADICIONAR GLICOSE
+// REGISTRAR AFERICAO DE GLICEMIA
 // =====================================================
 
-void add_glucose_measurement(float glucose)
-{
-    int glucose_int = (int)glucose;
+static void add_glucose_measurement(float glucose) {
+    latest_glucose = glucose;
+
+    int glucose_int = (int)roundf(glucose);
 
     if (
         label_glucose != NULL &&
         glucose_int != last_glucose_displayed
-    )
-    {
-        char buffer[16];
+    ) {
+        char text[16];
 
         snprintf(
-            buffer,
-            sizeof(buffer),
+            text,
+            sizeof(text),
             "%d",
             glucose_int
         );
 
-        lv_label_set_text(label_glucose, buffer);
+        lv_label_set_text(
+            label_glucose,
+            text
+        );
 
         last_glucose_displayed = glucose_int;
     }
 
-    latest_glucose = glucose;
-
-    // Salvar ate 20 afericoes.
-    if (measurement_count < MAX_MEASUREMENTS)
-    {
+    // Registra no maximo 10 afericoes por sessao.
+    if (measurement_count < MAX_MEASUREMENTS) {
         glucose_history[measurement_count] = glucose;
 
         measurement_count++;
 
-        Serial.print("Afericao registrada: ");
-        Serial.print(measurement_count);
-        Serial.print("/20 - Glicose: ");
-        Serial.println(glucose);
+        Serial.printf(
+            "Afericao registrada: %d/%d - Glicose: %.1f\n",
+            measurement_count,
+            MAX_MEASUREMENTS,
+            glucose
+        );
+
+        update_measurement_counter();
+
+        // Atualiza a tela de historico imediatamente,
+        // inclusive se ela estiver aberta.
+        if (history_screen_open) {
+            update_history_chart();
+            update_history_average();
+
+            last_history_count = measurement_count;
+        }
     }
 
-    update_measurement_counter();
-
-    if (history_screen_open)
-    {
-        update_history_chart();
-        update_history_average();
-    }
+    check_measurement_completion();
 }
 
 // =====================================================
-// ATUALIZAR TELA HISTORICO
+// VERIFICACAO DO LIMITE DE AFERICOES
 // =====================================================
 
-void update_history_screen()
-{
-    if (!history_screen_open)
-    {
-        return;
-    }
-
-    if (measurement_count != last_history_count)
-    {
-        last_history_count = measurement_count;
-
-        update_history_chart();
-        update_history_average();
-    }
-}
-
-// =====================================================
-// VERIFICAR 20 AFERICOES
-// =====================================================
-
-bool isMeasurementComplete()
-{
+static bool isMeasurementComplete() {
     return measurement_count >= MAX_MEASUREMENTS;
 }
 
-void check_measurement_completion()
-{
+static void check_measurement_completion() {
     if (
         isMeasurementComplete() &&
         !final_screen_shown
-    )
-    {
+    ) {
         final_screen_shown = true;
 
         Serial.println(
-            "20 afericoes concluidas."
+            "10 afericoes concluidas."
         );
     }
 }
 
 // =====================================================
-// SETUP LVGL
+// REINICIAR SESSAO E HISTORICO
 // =====================================================
 
-void lvgl_setup()
-{
-    Serial.println("Inicializando display...");
+static void resetHistorico() {
+    measurement_count = 0;
 
-    // TFT.
+    for (int i = 0; i < MAX_MEASUREMENTS; i++) {
+        glucose_history[i] = 0.0f;
+    }
+
+    last_history_count = -1;
+    last_counter_value = -1;
+
+    last_bpm_displayed = -999;
+    last_spo2_displayed = -999;
+    last_glucose_displayed = -999;
+
+    final_screen_shown = false;
+
+    latest_bpm = 0;
+    latest_spo2 = 0.0f;
+    latest_glucose = 0.0f;
+
+    if (label_bpm != NULL) {
+        lv_label_set_text(
+            label_bpm,
+            "--"
+        );
+    }
+
+    if (label_spo2 != NULL) {
+        lv_label_set_text(
+            label_spo2,
+            "--"
+        );
+    }
+
+    if (label_glucose != NULL) {
+        lv_label_set_text(
+            label_glucose,
+            "--"
+        );
+    }
+
+    if (history_chart != NULL && history_series != NULL) {
+        for (int i = 0; i < MAX_MEASUREMENTS; i++) {
+            lv_chart_set_value_by_id(
+                history_chart,
+                history_series,
+                i,
+                LV_CHART_POINT_NONE
+            );
+        }
+
+        lv_chart_refresh(history_chart);
+    }
+
+    if (history_average != NULL) {
+        lv_label_set_text(
+            history_average,
+            "-- mg/dL"
+        );
+    }
+
+    if (history_empty_label != NULL) {
+        lv_obj_clear_flag(
+            history_empty_label,
+            LV_OBJ_FLAG_HIDDEN
+        );
+    }
+
+    if (history_count_label != NULL) {
+        lv_label_set_text(
+            history_count_label,
+            "0/10"
+        );
+    }
+
+    if (label_counter != NULL) {
+        lv_label_set_text(
+            label_counter,
+            "Afericoes: 0/10"
+        );
+    }
+
+    Serial.println(
+        "Nova sessao iniciada. Historico zerado."
+    );
+}
+
+// =====================================================
+// INICIALIZACAO DO LVGL E DISPLAY
+// =====================================================
+
+static void lvgl_setup() {
+    Serial.println(
+        "Inicializando display..."
+    );
+
     tft.begin();
+
     tft.setRotation(0);
 
-    // LVGL.
     lv_init();
 
-    // Touch.
     touchscreenSPI.begin(
         XPT2046_CLK,
         XPT2046_MISO,
@@ -1638,10 +1849,10 @@ void lvgl_setup()
         XPT2046_CS
     );
 
-    touchscreen.begin(touchscreenSPI);
+    touchscreen.begin();
+
     touchscreen.setRotation(0);
 
-    // Buffer LVGL.
     lv_disp_draw_buf_init(
         &draw_buf,
         buf1,
@@ -1649,19 +1860,18 @@ void lvgl_setup()
         SCREEN_WIDTH * BUFFER_LINES
     );
 
-    // Driver do display.
     static lv_disp_drv_t disp_drv;
 
     lv_disp_drv_init(&disp_drv);
 
     disp_drv.hor_res = SCREEN_WIDTH;
     disp_drv.ver_res = SCREEN_HEIGHT;
+
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.draw_buf = &draw_buf;
 
     lv_disp_drv_register(&disp_drv);
 
-    // Driver do touch.
     static lv_indev_drv_t indev_drv;
 
     lv_indev_drv_init(&indev_drv);
@@ -1671,43 +1881,42 @@ void lvgl_setup()
 
     lv_indev_drv_register(&indev_drv);
 
-    // Criar telas.
+    // Cria as telas.
     lv_create_splash();
     lv_create_main();
     lv_create_history();
 
-    // Mostrar splash.
     lv_scr_load(scr_splash);
 
     splash_start_ms = millis();
-    splash_finished = false;
 
-    Serial.println("Display inicializado.");
+    Serial.println(
+        "Display inicializado."
+    );
 }
 
 // =====================================================
 // LOOP DO DISPLAY
+// Nao chamar lv_timer_handler aqui.
+// O .ino ja deve chama-lo no loop principal.
 // =====================================================
 
-void display_loop()
-{
-    // Durante os 10 segundos, o spinner nativo
-    // e animado automaticamente pelo LVGL.
-    if (!splash_finished)
-    {
+static void display_loop() {
+    static bool splash_finished = false;
+
+    // Tela de carregamento durante 10 segundos.
+    if (!splash_finished) {
         if (
-            millis() - splash_start_ms >=
-            SPLASH_MS
-        )
-        {
-            // Remover o spinner ao terminar.
-            if (spinner != NULL)
-            {
+            millis() - splash_start_ms >= SPLASH_MS
+        ) {
+            if (spinner != NULL) {
                 lv_obj_del(spinner);
                 spinner = NULL;
             }
 
-            lv_scr_load(scr_main);
+            if (scr_main != NULL) {
+                lv_scr_load(scr_main);
+            }
 
             splash_finished = true;
 
@@ -1719,39 +1928,32 @@ void display_loop()
         return;
     }
 
-    // Solicitação de abertura do historico pelo touch.
-    if (history_touch_request)
-    {
+    // Solicitação de abertura do histórico pelo touch.
+    if (history_touch_request) {
         history_touch_request = false;
 
-        if (!history_screen_open)
-        {
+        if (!history_screen_open) {
             open_history_screen();
         }
     }
 
-    // Atualizacoes normais.
     update_measurement_counter();
-    update_history_screen();
-    check_measurement_completion();
 
-    // IMPORTANTE:
-    // Nao chamar lv_timer_handler() aqui.
-    // O .ino ja chama lv_timer_handler() a cada 10 ms.
-    // Nao usar delay() aqui.
+    update_history_screen();
+
+    check_measurement_completion();
 }
 
 // =====================================================
-// FUNCOES PUBLICAS AUXILIARES
+// FUNCOES DE COMPATIBILIDADE
+// Para chamadas de outros arquivos do projeto.
 // =====================================================
 
-static void addMeasurementToHistory(float glucose)
-{
+static void addMeasurementToHistory(float glucose) {
     add_glucose_measurement(glucose);
 }
 
-static void add_glucose_history(float glucose)
-{
+static void add_glucose_history(float glucose) {
     add_glucose_measurement(glucose);
 }
 
@@ -1759,37 +1961,33 @@ static void updateDisplay(
     int bpm,
     float spo2,
     float glucose
-)
-{
+) {
     update_sensor_values(bpm, spo2);
     add_glucose_measurement(glucose);
 }
 
-static int getMeasurementCount()
-{
+static int getMeasurementCount() {
     return measurement_count;
 }
 
-static float getFinalAverage()
-{
-    if (measurement_count <= 0)
-    {
+static float getFinalAverage() {
+    if (measurement_count <= 0) {
         return 0.0f;
     }
 
-    float total = 0.0f;
+    float sum = 0.0f;
 
-    for (
-        int i = 0;
-        i < measurement_count &&
-        i < MAX_MEASUREMENTS;
-        i++
-    )
-    {
-        total += glucose_history[i];
+    int total = measurement_count;
+
+    if (total > MAX_MEASUREMENTS) {
+        total = MAX_MEASUREMENTS;
     }
 
-    return total / measurement_count;
+    for (int i = 0; i < total; i++) {
+        sum += glucose_history[i];
+    }
+
+    return sum / total;
 }
 
 #endif
