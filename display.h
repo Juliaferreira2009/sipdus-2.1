@@ -1,7 +1,7 @@
-
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
+#include <Arduino.h>
 #include <lvgl.h>
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
@@ -27,15 +27,8 @@
 #define COLOR_TEXT_LIGHT   0x686D82
 #define COLOR_TEXT_GRAY    0x9297A8
 #define COLOR_BORDER       0xE6E8F0
-#define COLOR_GREEN        0x16803C
-#define COLOR_RED          0xD93025
-#define COLOR_ORANGE       0xB45309
-
-// Faixas gerais de referencia para adultos.
-// Nao sao criterios de diagnostico.
-#define BPM_MIN_ADULT 60
-#define BPM_MAX_ADULT 100
-#define SPO2_MIN_ADULT 95.0f
+#define COLOR_CARD         0xFFFFFF
+#define COLOR_BLUE         0x1976D2
 
 // =====================================================
 // TOUCHSCREEN
@@ -65,17 +58,19 @@ extern float latest_glucose;
 // =====================================================
 
 static SPIClass touchscreenSPI = SPIClass(VSPI);
+
 static XPT2046_Touchscreen touchscreen(
     XPT2046_CS,
     XPT2046_IRQ
 );
+
 static TFT_eSPI tft = TFT_eSPI();
 
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf1[SCREEN_WIDTH * BUFFER_LINES];
 
 // =====================================================
-// TELAS E COMPONENTES
+// TELAS
 // =====================================================
 
 static lv_obj_t* scr_splash = NULL;
@@ -90,22 +85,22 @@ static lv_obj_t* label_loading_subtitle = NULL;
 static lv_obj_t* label_bpm = NULL;
 static lv_obj_t* label_spo2 = NULL;
 static lv_obj_t* label_glucose = NULL;
-static lv_obj_t* label_counter = NULL;
 
 static lv_obj_t* label_bpm_status = NULL;
 static lv_obj_t* label_spo2_status = NULL;
 static lv_obj_t* label_glucose_status = NULL;
 
+static lv_obj_t* label_counter = NULL;
+
 static lv_obj_t* history_count_label = NULL;
 static lv_obj_t* history_average = NULL;
-static lv_obj_t* history_average_status = NULL;
 static lv_obj_t* history_chart = NULL;
 static lv_obj_t* history_empty_label = NULL;
 
 static lv_chart_series_t* history_series = NULL;
 
 // =====================================================
-// HISTORICO E ESTADOS
+// HISTORICO
 // =====================================================
 
 static float glucose_history[MAX_MEASUREMENTS] = {0};
@@ -181,8 +176,7 @@ static void my_disp_flush(
 }
 
 // =====================================================
-// LEITURA DO TOUCHSCREEN
-// Mantem a inversao horizontal que fez HISTORICO funcionar
+// TOUCHSCREEN
 // =====================================================
 
 static void touchscreen_read(
@@ -216,10 +210,7 @@ static void touchscreen_read(
         if (!touch_was_pressed) {
             Serial.printf(
                 "TOUCH RAW: X=%d Y=%d | LVGL: X=%d Y=%d\n",
-                p.x,
-                p.y,
-                x,
-                y
+                p.x, p.y, x, y
             );
 
             touch_was_pressed = true;
@@ -287,17 +278,8 @@ static void style_card(
         0
     );
 
-    lv_obj_set_style_border_width(
-        card,
-        0,
-        0
-    );
-
-    lv_obj_set_style_shadow_width(
-        card,
-        0,
-        0
-    );
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_shadow_width(card, 0, 0);
 
     remove_scroll(card);
 }
@@ -316,11 +298,7 @@ static lv_obj_t* create_button(
 
     lv_obj_set_size(button, width, height);
 
-    lv_obj_set_style_radius(
-        button,
-        10,
-        LV_PART_MAIN
-    );
+    lv_obj_set_style_radius(button, 10, 0);
 
     lv_obj_set_style_bg_color(
         button,
@@ -364,23 +342,20 @@ static lv_obj_t* create_button(
         &lv_font_montserrat_14
     );
 
-    // Evita que o texto interfira na deteccao do botao.
-    lv_obj_clear_flag(label, LV_OBJ_FLAG_CLICKABLE);
-
     lv_obj_center(label);
 
     return button;
 }
 
 // =====================================================
-// ICONES
+// ICONE DE CORACAO
 // =====================================================
 
 static void draw_heart_icon(lv_obj_t* parent) {
     static lv_point_t points[] = {
-        {17,27}, {5,15}, {5,9}, {9,5}, {14,5},
-        {17,9}, {20,5}, {25,5}, {29,9}, {29,15},
-        {17,27}
+        {17, 27}, {5, 15}, {5, 9}, {9, 5},
+        {14, 5}, {17, 9}, {20, 5}, {25, 5},
+        {29, 9}, {29, 15}, {17, 27}
     };
 
     lv_obj_t* line = lv_line_create(parent);
@@ -399,8 +374,13 @@ static void draw_heart_icon(lv_obj_t* parent) {
 
     lv_obj_set_style_line_width(line, 2, 0);
     lv_obj_set_style_line_rounded(line, true, 0);
+
     lv_obj_align(line, LV_ALIGN_CENTER, -2, 0);
 }
+
+// =====================================================
+// ICONE DE OXIGENIO
+// =====================================================
 
 static void draw_oxygen_icon(lv_obj_t* parent) {
     lv_obj_t* circle = lv_obj_create(parent);
@@ -443,11 +423,15 @@ static void draw_oxygen_icon(lv_obj_t* parent) {
     lv_obj_center(label);
 }
 
+// =====================================================
+// ICONE DE GOTA
+// =====================================================
+
 static void draw_drop_icon(lv_obj_t* parent) {
     static lv_point_t points[] = {
-        {17,3}, {9,14}, {7,19}, {8,24}, {12,28},
-        {17,30}, {22,28}, {26,24}, {27,19}, {25,14},
-        {17,3}
+        {17, 3}, {9, 14}, {7, 19}, {8, 24},
+        {12, 28}, {17, 30}, {22, 28}, {26, 24},
+        {27, 19}, {25, 14}, {17, 3}
     };
 
     lv_obj_t* line = lv_line_create(parent);
@@ -466,11 +450,12 @@ static void draw_drop_icon(lv_obj_t* parent) {
 
     lv_obj_set_style_line_width(line, 2, 0);
     lv_obj_set_style_line_rounded(line, true, 0);
+
     lv_obj_align(line, LV_ALIGN_CENTER, -2, 0);
 }
 
 // =====================================================
-// CARDS DOS SINAIS VITAIS
+// CARD DE MONITORAMENTO
 // =====================================================
 
 static lv_obj_t* create_card(
@@ -484,14 +469,26 @@ static lv_obj_t* create_card(
     lv_obj_t* card = lv_obj_create(parent);
 
     lv_obj_set_size(card, 290, 48);
-    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, y);
 
-    style_card(card, COLOR_WHITE, 14);
+    lv_obj_align(
+        card,
+        LV_ALIGN_TOP_MID,
+        0,
+        y
+    );
+
+    style_card(card, COLOR_CARD, 14);
 
     lv_obj_t* icon_bg = lv_obj_create(card);
 
     lv_obj_set_size(icon_bg, 34, 34);
-    lv_obj_align(icon_bg, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_align(
+        icon_bg,
+        LV_ALIGN_LEFT_MID,
+        0,
+        0
+    );
 
     lv_obj_set_style_bg_color(
         icon_bg,
@@ -535,25 +532,26 @@ static lv_obj_t* create_card(
         -8
     );
 
-    *status_out = lv_label_create(card);
+    lv_obj_t* status_label = lv_label_create(card);
 
-    lv_label_set_text(
-        *status_out,
-        "Aguardando leitura"
-    );
+    lv_label_set_text(status_label, "Sem leitura");
 
     style_label(
-        *status_out,
-        COLOR_TEXT_GRAY,
+        status_label,
+        COLOR_BLUE,
         &lv_font_montserrat_10
     );
 
     lv_obj_align(
-        *status_out,
+        status_label,
         LV_ALIGN_LEFT_MID,
         43,
-        10
+        11
     );
+
+    if (status_out != NULL) {
+        *status_out = status_label;
+    }
 
     lv_obj_t* value_label = lv_label_create(card);
 
@@ -693,15 +691,13 @@ static void lv_create_splash() {
 }
 
 // =====================================================
-// EVENTOS DOS BOTOES
+// CALLBACKS DOS BOTOES
 // =====================================================
 
 static void history_button_event(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
         return;
     }
-
-    Serial.println("Botao HISTORICO pressionado.");
 
     open_history_screen();
 }
@@ -711,8 +707,6 @@ static void back_button_event(lv_event_t* e) {
         return;
     }
 
-    Serial.println("Botao VOLTAR pressionado.");
-
     history_screen_open = false;
 
     if (scr_main != NULL) {
@@ -721,18 +715,9 @@ static void back_button_event(lv_event_t* e) {
 }
 
 static void reset_button_event(lv_event_t* e) {
-    lv_event_code_t code = lv_event_get_code(e);
-
-    if (code == LV_EVENT_PRESSED) {
-        Serial.println("NOVA SESSAO: botao pressionado.");
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
         return;
     }
-
-    if (code != LV_EVENT_CLICKED) {
-        return;
-    }
-
-    Serial.println("NOVA SESSAO: clique detectado.");
 
     resetHistorico();
 
@@ -740,7 +725,6 @@ static void reset_button_event(lv_event_t* e) {
 
     if (scr_main != NULL) {
         lv_scr_load(scr_main);
-        Serial.println("Tela principal carregada.");
     }
 
     update_measurement_counter();
@@ -774,7 +758,12 @@ static void lv_create_main() {
         &lv_font_montserrat_20
     );
 
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 14, 8);
+    lv_obj_align(
+        title,
+        LV_ALIGN_TOP_LEFT,
+        14,
+        8
+    );
 
     label_counter = lv_label_create(scr_main);
 
@@ -786,7 +775,12 @@ static void lv_create_main() {
         &lv_font_montserrat_12
     );
 
-    lv_obj_align(label_counter, LV_ALIGN_TOP_LEFT, 16, 34);
+    lv_obj_align(
+        label_counter,
+        LV_ALIGN_TOP_LEFT,
+        16,
+        34
+    );
 
     lv_obj_t* history_button = create_button(
         scr_main,
@@ -888,7 +882,12 @@ static void lv_create_history() {
         &lv_font_montserrat_20
     );
 
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 13, 7);
+    lv_obj_align(
+        title,
+        LV_ALIGN_TOP_LEFT,
+        13,
+        7
+    );
 
     history_count_label = lv_label_create(scr_history);
 
@@ -907,7 +906,7 @@ static void lv_create_history() {
         12
     );
 
-    // Card da media estimada
+    // Card da media
     lv_obj_t* average_card = lv_obj_create(scr_history);
 
     lv_obj_set_size(average_card, 296, 46);
@@ -925,7 +924,12 @@ static void lv_create_history() {
 
     lv_obj_set_size(accent, 5, 28);
 
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_align(
+        accent,
+        LV_ALIGN_LEFT_MID,
+        0,
+        0
+    );
 
     lv_obj_set_style_bg_color(
         accent,
@@ -943,7 +947,7 @@ static void lv_create_history() {
 
     lv_label_set_text(
         average_caption,
-        "MEDIA ESTIMADA - EXPERIMENTAL"
+        "MEDIA DAS AFERICOES"
     );
 
     style_label(
@@ -976,26 +980,6 @@ static void lv_create_history() {
         11
     );
 
-    history_average_status = lv_label_create(average_card);
-
-    lv_label_set_text(
-        history_average_status,
-        "Nao validada clinicamente"
-    );
-
-    style_label(
-        history_average_status,
-        COLOR_ORANGE,
-        &lv_font_montserrat_10
-    );
-
-    lv_obj_align(
-        history_average_status,
-        LV_ALIGN_RIGHT_MID,
-        -5,
-        11
-    );
-
     // Card do grafico
     lv_obj_t* chart_card = lv_obj_create(scr_history);
 
@@ -1014,7 +998,7 @@ static void lv_create_history() {
 
     lv_label_set_text(
         chart_title,
-        "EVOLUCAO DA ESTIMATIVA"
+        "EVOLUCAO DA GLICEMIA"
     );
 
     style_label(
@@ -1041,7 +1025,10 @@ static void lv_create_history() {
         -1
     );
 
-    lv_chart_set_type(history_chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_type(
+        history_chart,
+        LV_CHART_TYPE_LINE
+    );
 
     lv_chart_set_point_count(
         history_chart,
@@ -1162,15 +1149,15 @@ static void lv_create_history() {
     lv_obj_t* back_button = create_button(
         scr_history,
         "VOLTAR",
-        92,
-        32
+        84,
+        29
     );
 
     lv_obj_align(
         back_button,
         LV_ALIGN_BOTTOM_LEFT,
         12,
-        -5
+        -7
     );
 
     lv_obj_add_event_cb(
@@ -1184,22 +1171,21 @@ static void lv_create_history() {
     lv_obj_t* reset_button = create_button(
         scr_history,
         "NOVA SESSAO",
-        128,
-        32
+        112,
+        29
     );
 
     lv_obj_align(
         reset_button,
         LV_ALIGN_BOTTOM_RIGHT,
         -12,
-        -5
+        -7
     );
 
-    // Usa um callback para todos os eventos e filtra dentro dele.
     lv_obj_add_event_cb(
         reset_button,
         reset_button_event,
-        LV_EVENT_ALL,
+        LV_EVENT_CLICKED,
         NULL
     );
 }
@@ -1221,7 +1207,7 @@ static void open_history_screen() {
     update_history_average();
 
     if (history_count_label != NULL) {
-        char text[16];
+        char text[20];
 
         snprintf(
             text,
@@ -1270,7 +1256,7 @@ static void update_measurement_counter() {
     last_counter_value = measurement_count;
 
     if (history_count_label != NULL) {
-        char history_text[16];
+        char history_text[20];
 
         snprintf(
             history_text,
@@ -1292,10 +1278,7 @@ static void update_measurement_counter() {
 // =====================================================
 
 static void update_history_chart() {
-    if (
-        history_chart == NULL ||
-        history_series == NULL
-    ) {
+    if (history_chart == NULL || history_series == NULL) {
         return;
     }
 
@@ -1356,14 +1339,6 @@ static void update_history_average() {
 
     if (measurement_count <= 0) {
         lv_label_set_text(history_average, "-- mg/dL");
-
-        if (history_average_status != NULL) {
-            lv_label_set_text(
-                history_average_status,
-                "Nao validada clinicamente"
-            );
-        }
-
         return;
     }
 
@@ -1391,17 +1366,10 @@ static void update_history_average() {
     );
 
     lv_label_set_text(history_average, text);
-
-    if (history_average_status != NULL) {
-        lv_label_set_text(
-            history_average_status,
-            "Nao validada clinicamente"
-        );
-    }
 }
 
 // =====================================================
-// ATUALIZAR TELA DO HISTORICO
+// ATUALIZAR TELA DE HISTORICO
 // =====================================================
 
 static void update_history_screen() {
@@ -1419,84 +1387,117 @@ static void update_history_screen() {
 }
 
 // =====================================================
-// ATUALIZAR BPM E SPO2 COM INDICADORES
+// FAIXA DE BPM
+// Referencia geral para adultos em repouso
+// =====================================================
+
+static const char* get_bpm_status(int bpm) {
+    if (bpm <= 0) {
+        return "Sem leitura";
+    }
+
+    if (bpm < 60) {
+        return "Faixa baixa";
+    }
+
+    if (bpm <= 100) {
+        return "Faixa usual";
+    }
+
+    return "Faixa elevada";
+}
+
+// =====================================================
+// FAIXA DE SPO2
+// =====================================================
+
+static const char* get_spo2_status(float spo2) {
+    if (!isfinite(spo2) || spo2 <= 0 || spo2 > 100) {
+        return "Sem leitura";
+    }
+
+    if (spo2 < 90) {
+        return "Baixa";
+    }
+
+    if (spo2 < 95) {
+        return "Abaixo do ideal";
+    }
+
+    return "Faixa usual";
+}
+
+// =====================================================
+// FAIXA DE GLICEMIA ESTIMADA
+// Referencia visual aproximada apos alimentacao
+// =====================================================
+
+static const char* get_glucose_status(float glucose) {
+    if (!isfinite(glucose) || glucose <= 0) {
+        return "Sem leitura";
+    }
+
+    if (glucose < 70) {
+        return "Faixa baixa";
+    }
+
+    if (glucose < 140) {
+        return "Faixa usual";
+    }
+
+    if (glucose < 200) {
+        return "Faixa elevada";
+    }
+
+    return "Faixa alta";
+}
+
+// =====================================================
+// ATUALIZAR STATUS AZUL
+// =====================================================
+
+static void set_status_text(
+    lv_obj_t* label,
+    const char* text
+) {
+    if (label == NULL) {
+        return;
+    }
+
+    lv_label_set_text(label, text);
+
+    lv_obj_set_style_text_color(
+        label,
+        lv_color_hex(COLOR_BLUE),
+        0
+    );
+}
+
+// =====================================================
+// ATUALIZAR BPM E SPO2
 // =====================================================
 
 static void update_sensor_values(
     int bpm,
     float spo2
 ) {
-    // ---------------- BPM ----------------
-
-    if (
-        label_bpm != NULL &&
-        bpm != last_bpm_displayed
-    ) {
+    if (label_bpm != NULL && bpm != last_bpm_displayed) {
         char text[16];
 
-        snprintf(text, sizeof(text), "%d", bpm);
+        if (bpm > 0) {
+            snprintf(text, sizeof(text), "%d", bpm);
+        } else {
+            snprintf(text, sizeof(text), "--");
+        }
 
         lv_label_set_text(label_bpm, text);
-
         last_bpm_displayed = bpm;
     }
 
-    if (label_bpm_status != NULL) {
-        if (bpm <= 0) {
-            lv_label_set_text(
-                label_bpm_status,
-                "Sem leitura"
-            );
-
-            style_label(
-                label_bpm_status,
-                COLOR_TEXT_GRAY,
-                &lv_font_montserrat_10
-            );
-
-        } else if (
-            bpm >= BPM_MIN_ADULT &&
-            bpm <= BPM_MAX_ADULT
-        ) {
-            lv_label_set_text(
-                label_bpm_status,
-                "Faixa usual adulto"
-            );
-
-            style_label(
-                label_bpm_status,
-                COLOR_GREEN,
-                &lv_font_montserrat_10
-            );
-
-        } else {
-            lv_label_set_text(
-                label_bpm_status,
-                "Fora da faixa usual"
-            );
-
-            style_label(
-                label_bpm_status,
-                COLOR_RED,
-                &lv_font_montserrat_10
-            );
-        }
-    }
-
-    if (label_bpm != NULL && bpm > 0) {
-        uint32_t color =
-            (bpm >= BPM_MIN_ADULT && bpm <= BPM_MAX_ADULT)
-            ? COLOR_GREEN
-            : COLOR_RED;
-
-        lv_obj_set_style_text_color(
-            label_bpm,
-            lv_color_hex(color),
-            0
-        );
-    }
-
-    // ---------------- SPO2 ----------------
+    set_status_text(
+        label_bpm_status,
+        get_bpm_status(bpm)
+    );
 
     int spo2_int = (int)roundf(spo2);
 
@@ -1506,68 +1507,20 @@ static void update_sensor_values(
     ) {
         char text[16];
 
-        snprintf(text, sizeof(text), "%d", spo2_int);
+        if (isfinite(spo2) && spo2 > 0 && spo2 <= 100) {
+            snprintf(text, sizeof(text), "%d", spo2_int);
+        } else {
+            snprintf(text, sizeof(text), "--");
+        }
 
         lv_label_set_text(label_spo2, text);
-
         last_spo2_displayed = spo2_int;
     }
 
-    if (label_spo2_status != NULL) {
-        if (spo2 <= 0.0f || spo2 > 100.0f) {
-            lv_label_set_text(
-                label_spo2_status,
-                "Sem leitura valida"
-            );
-
-            style_label(
-                label_spo2_status,
-                COLOR_TEXT_GRAY,
-                &lv_font_montserrat_10
-            );
-
-        } else if (spo2 >= SPO2_MIN_ADULT) {
-            lv_label_set_text(
-                label_spo2_status,
-                "Faixa usual adulto"
-            );
-
-            style_label(
-                label_spo2_status,
-                COLOR_GREEN,
-                &lv_font_montserrat_10
-            );
-
-        } else {
-            lv_label_set_text(
-                label_spo2_status,
-                "Abaixo da faixa usual"
-            );
-
-            style_label(
-                label_spo2_status,
-                COLOR_RED,
-                &lv_font_montserrat_10
-            );
-        }
-    }
-
-    if (
-        label_spo2 != NULL &&
-        spo2 > 0.0f &&
-        spo2 <= 100.0f
-    ) {
-        uint32_t color =
-            (spo2 >= SPO2_MIN_ADULT)
-            ? COLOR_GREEN
-            : COLOR_RED;
-
-        lv_obj_set_style_text_color(
-            label_spo2,
-            lv_color_hex(color),
-            0
-        );
-    }
+    set_status_text(
+        label_spo2_status,
+        get_spo2_status(spo2)
+    );
 
     latest_bpm = bpm;
     latest_spo2 = spo2;
@@ -1576,13 +1529,17 @@ static void update_sensor_values(
 }
 
 // =====================================================
-// REGISTRAR MEDICAO DE GLICEMIA ESTIMADA
+// REGISTRAR AFERICAO DE GLICEMIA
 // =====================================================
 
 static void add_glucose_measurement(float glucose) {
     latest_glucose = glucose;
 
-    int glucose_int = (int)roundf(glucose);
+    bool valid_glucose = isfinite(glucose) && glucose > 0;
+
+    int glucose_int = valid_glucose
+        ? (int)roundf(glucose)
+        : -1;
 
     if (
         label_glucose != NULL &&
@@ -1590,32 +1547,30 @@ static void add_glucose_measurement(float glucose) {
     ) {
         char text[16];
 
-        snprintf(text, sizeof(text), "%d", glucose_int);
+        if (valid_glucose) {
+            snprintf(text, sizeof(text), "%d", glucose_int);
+        } else {
+            snprintf(text, sizeof(text), "--");
+        }
 
         lv_label_set_text(label_glucose, text);
-
         last_glucose_displayed = glucose_int;
     }
 
-    if (label_glucose_status != NULL) {
-        lv_label_set_text(
-            label_glucose_status,
-            "Estimativa experimental"
-        );
+    set_status_text(
+        label_glucose_status,
+        get_glucose_status(glucose)
+    );
 
-        style_label(
-            label_glucose_status,
-            COLOR_ORANGE,
-            &lv_font_montserrat_10
-        );
-    }
-
-    if (measurement_count < MAX_MEASUREMENTS) {
+    if (
+        valid_glucose &&
+        measurement_count < MAX_MEASUREMENTS
+    ) {
         glucose_history[measurement_count] = glucose;
         measurement_count++;
 
         Serial.printf(
-            "Afericao registrada: %d/%d - Glicose estimada: %.1f\n",
+            "Afericao registrada: %d/%d - Glicemia estimada: %.1f\n",
             measurement_count,
             MAX_MEASUREMENTS,
             glucose
@@ -1635,7 +1590,7 @@ static void add_glucose_measurement(float glucose) {
 }
 
 // =====================================================
-// LIMITE DE 30 MEDICOES
+// LIMITE DE AFERICOES
 // =====================================================
 
 static bool isMeasurementComplete() {
@@ -1649,16 +1604,16 @@ static void check_measurement_completion() {
     ) {
         final_screen_shown = true;
 
-        Serial.println("30 afericoes concluidas.");
+        Serial.println("Afericoes concluidas.");
 
-        if (scr_history != NULL) {
+        if (scr_history != NULL && !history_screen_open) {
             open_history_screen();
         }
     }
 }
 
 // =====================================================
-// NOVA SESSAO - ZERAR HISTORICO
+// NOVA SESSAO
 // =====================================================
 
 static void resetHistorico() {
@@ -1683,74 +1638,21 @@ static void resetHistorico() {
 
     if (label_bpm != NULL) {
         lv_label_set_text(label_bpm, "--");
-        lv_obj_set_style_text_color(
-            label_bpm,
-            lv_color_hex(COLOR_YELLOW_DARK),
-            0
-        );
     }
 
     if (label_spo2 != NULL) {
         lv_label_set_text(label_spo2, "--");
-        lv_obj_set_style_text_color(
-            label_spo2,
-            lv_color_hex(COLOR_YELLOW_DARK),
-            0
-        );
     }
 
     if (label_glucose != NULL) {
         lv_label_set_text(label_glucose, "--");
-        lv_obj_set_style_text_color(
-            label_glucose,
-            lv_color_hex(COLOR_YELLOW_DARK),
-            0
-        );
     }
 
-    if (label_bpm_status != NULL) {
-        lv_label_set_text(
-            label_bpm_status,
-            "Aguardando leitura"
-        );
+    set_status_text(label_bpm_status, "Sem leitura");
+    set_status_text(label_spo2_status, "Sem leitura");
+    set_status_text(label_glucose_status, "Sem leitura");
 
-        style_label(
-            label_bpm_status,
-            COLOR_TEXT_GRAY,
-            &lv_font_montserrat_10
-        );
-    }
-
-    if (label_spo2_status != NULL) {
-        lv_label_set_text(
-            label_spo2_status,
-            "Aguardando leitura"
-        );
-
-        style_label(
-            label_spo2_status,
-            COLOR_TEXT_GRAY,
-            &lv_font_montserrat_10
-        );
-    }
-
-    if (label_glucose_status != NULL) {
-        lv_label_set_text(
-            label_glucose_status,
-            "Aguardando leitura"
-        );
-
-        style_label(
-            label_glucose_status,
-            COLOR_TEXT_GRAY,
-            &lv_font_montserrat_10
-        );
-    }
-
-    if (
-        history_chart != NULL &&
-        history_series != NULL
-    ) {
+    if (history_chart != NULL && history_series != NULL) {
         for (int i = 0; i < MAX_MEASUREMENTS; i++) {
             lv_chart_set_value_by_id(
                 history_chart,
@@ -1764,17 +1666,7 @@ static void resetHistorico() {
     }
 
     if (history_average != NULL) {
-        lv_label_set_text(
-            history_average,
-            "-- mg/dL"
-        );
-    }
-
-    if (history_average_status != NULL) {
-        lv_label_set_text(
-            history_average_status,
-            "Nao validada clinicamente"
-        );
+        lv_label_set_text(history_average, "-- mg/dL");
     }
 
     if (history_empty_label != NULL) {
@@ -1785,36 +1677,18 @@ static void resetHistorico() {
     }
 
     if (history_count_label != NULL) {
-        char text[16];
-
-        snprintf(
-            text,
-            sizeof(text),
-            "0/%d",
-            MAX_MEASUREMENTS
-        );
-
-        lv_label_set_text(history_count_label, text);
+        lv_label_set_text(history_count_label, "0/30");
     }
 
     if (label_counter != NULL) {
-        char text[32];
-
-        snprintf(
-            text,
-            sizeof(text),
-            "Afericoes: 0/%d",
-            MAX_MEASUREMENTS
-        );
-
-        lv_label_set_text(label_counter, text);
+        lv_label_set_text(label_counter, "Afericoes: 0/30");
     }
 
     Serial.println("Nova sessao iniciada. Historico zerado.");
 }
 
 // =====================================================
-// INICIALIZACAO
+// INICIALIZACAO DO DISPLAY E TOUCH
 // =====================================================
 
 static void lvgl_setup() {
