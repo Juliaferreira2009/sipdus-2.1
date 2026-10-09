@@ -1,3 +1,4 @@
+
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
@@ -46,7 +47,7 @@
 #define TOUCH_Y_MAX 3800
 
 // =====================================================
-// VARIAVEIS GLOBAIS DO PROJETO
+// VARIAVEIS GLOBAIS
 // =====================================================
 
 extern int latest_bpm;
@@ -110,6 +111,7 @@ static unsigned long splash_start_ms = 0;
 
 static bool history_screen_open = false;
 static bool final_screen_shown = false;
+static bool splash_finished = false;
 
 static int last_history_count = -1;
 static int last_counter_value = -1;
@@ -220,17 +222,6 @@ static void touchscreen_read(
             );
 
             touch_was_pressed = true;
-
-            // Regiao do botao HISTORICO
-            if (
-                scr_main != NULL &&
-                !history_screen_open &&
-                x >= 220 &&
-                y >= 0 &&
-                y <= 45
-            ) {
-                history_touch_request = true;
-            }
         }
 
         data->point.x = x;
@@ -432,7 +423,13 @@ static void draw_heart_icon(lv_obj_t* parent) {
         0
     );
 
-    lv_obj_center(line);
+    // Deslocamento pequeno para a esquerda.
+    lv_obj_align(
+        line,
+        LV_ALIGN_CENTER,
+        -2,
+        0
+    );
 }
 
 // =====================================================
@@ -536,7 +533,13 @@ static void draw_drop_icon(lv_obj_t* parent) {
         0
     );
 
-    lv_obj_center(line);
+    // Deslocamento pequeno para a esquerda.
+    lv_obj_align(
+        line,
+        LV_ALIGN_CENTER,
+        -2,
+        0
+    );
 }
 
 // =====================================================
@@ -663,8 +666,7 @@ static lv_obj_t* create_card(
 }
 
 // =====================================================
-// TELA DE CARREGAMENTO
-// Spinner e textos mais centralizados
+// TELA DE CALIBRACAO
 // =====================================================
 
 static void lv_create_splash() {
@@ -690,7 +692,6 @@ static void lv_create_splash() {
 
     remove_scroll(scr_splash);
 
-    // Titulo um pouco mais abaixo e equilibrado
     label_loading = lv_label_create(scr_splash);
 
     lv_label_set_text(
@@ -711,7 +712,6 @@ static void lv_create_splash() {
         -65
     );
 
-    // Spinner animado nativo do LVGL
     spinner = lv_spinner_create(
         scr_splash,
         2000,
@@ -863,6 +863,7 @@ static void lv_create_main() {
         6
     );
 
+    // O proprio evento do LVGL abre o historico.
     lv_obj_add_event_cb(
         history_button,
         [](lv_event_t* e) {
@@ -936,7 +937,7 @@ static void lv_create_main() {
 }
 
 // =====================================================
-// TELA DE HISTORICO - DESIGN REFORMULADO
+// TELA DE HISTORICO
 // =====================================================
 
 static void lv_create_history() {
@@ -962,7 +963,6 @@ static void lv_create_history() {
 
     remove_scroll(scr_history);
 
-    // Cabecalho
     history_title = lv_label_create(scr_history);
 
     lv_label_set_text(
@@ -983,7 +983,6 @@ static void lv_create_history() {
         7
     );
 
-    // Contador destacado no canto superior direito
     history_count_label = lv_label_create(scr_history);
 
     lv_label_set_text(
@@ -1004,7 +1003,7 @@ static void lv_create_history() {
         12
     );
 
-    // Card de media
+    // Card da media
     history_average_card = lv_obj_create(scr_history);
 
     lv_obj_set_size(
@@ -1026,7 +1025,6 @@ static void lv_create_history() {
         12
     );
 
-    // Pequena faixa amarela decorativa
     lv_obj_t* average_accent = lv_obj_create(
         history_average_card
     );
@@ -1136,7 +1134,6 @@ static void lv_create_history() {
         12
     );
 
-    // Titulo do grafico
     lv_obj_t* chart_title = lv_label_create(
         history_chart_card
     );
@@ -1159,7 +1156,6 @@ static void lv_create_history() {
         0
     );
 
-    // Grafico
     history_chart = lv_chart_create(
         history_chart_card
     );
@@ -1281,7 +1277,6 @@ static void lv_create_history() {
         );
     }
 
-    // Mensagem quando nao existem dados
     history_empty_label = lv_label_create(
         history_chart_card
     );
@@ -1310,7 +1305,7 @@ static void lv_create_history() {
         13
     );
 
-    // Botao voltar
+    // Botao VOLTAR
     lv_obj_t* back_button = create_button(
         scr_history,
         "VOLTAR",
@@ -1340,7 +1335,7 @@ static void lv_create_history() {
         NULL
     );
 
-    // Botao nova sessao
+    // Botao NOVA SESSAO
     lv_obj_t* reset_button = create_button(
         scr_history,
         "NOVA SESSAO",
@@ -1376,7 +1371,7 @@ static void lv_create_history() {
 }
 
 // =====================================================
-// ABRIR HISTORICO A QUALQUER MOMENTO
+// ABRIR HISTORICO
 // =====================================================
 
 static void open_history_screen() {
@@ -1385,10 +1380,8 @@ static void open_history_screen() {
     }
 
     history_screen_open = true;
-
     last_history_count = -1;
 
-    // Atualiza o grafico e a media com os dados atuais.
     update_history_chart();
     update_history_average();
 
@@ -1477,7 +1470,6 @@ static void update_history_chart() {
         return;
     }
 
-    // Limpa todos os pontos antigos.
     for (int i = 0; i < MAX_MEASUREMENTS; i++) {
         lv_chart_set_value_by_id(
             history_chart,
@@ -1487,7 +1479,6 @@ static void update_history_chart() {
         );
     }
 
-    // Insere somente as afericoes existentes.
     int total = measurement_count;
 
     if (total > MAX_MEASUREMENTS) {
@@ -1499,7 +1490,6 @@ static void update_history_chart() {
             glucose_history[i]
         );
 
-        // Limites visuais do grafico.
         if (value < 50) {
             value = 50;
         }
@@ -1516,7 +1506,6 @@ static void update_history_chart() {
         );
     }
 
-    // Mostra a mensagem apenas quando nao ha dados.
     if (history_empty_label != NULL) {
         if (total == 0) {
             lv_obj_clear_flag(
@@ -1582,7 +1571,7 @@ static void update_history_average() {
 }
 
 // =====================================================
-// ATUALIZACAO CONTINUA DO HISTORICO
+// ATUALIZACAO DA TELA DE HISTORICO
 // =====================================================
 
 static void update_history_screen() {
@@ -1690,7 +1679,6 @@ static void add_glucose_measurement(float glucose) {
     // Registra no maximo 10 afericoes por sessao.
     if (measurement_count < MAX_MEASUREMENTS) {
         glucose_history[measurement_count] = glucose;
-
         measurement_count++;
 
         Serial.printf(
@@ -1702,8 +1690,6 @@ static void add_glucose_measurement(float glucose) {
 
         update_measurement_counter();
 
-        // Atualiza a tela de historico imediatamente,
-        // inclusive se ela estiver aberta.
         if (history_screen_open) {
             update_history_chart();
             update_history_average();
@@ -1733,6 +1719,11 @@ static void check_measurement_completion() {
         Serial.println(
             "10 afericoes concluidas."
         );
+
+        // Abre o historico automaticamente ao completar 10.
+        if (scr_history != NULL) {
+            open_history_screen();
+        }
     }
 }
 
@@ -1761,27 +1752,21 @@ static void resetHistorico() {
     latest_glucose = 0.0f;
 
     if (label_bpm != NULL) {
-        lv_label_set_text(
-            label_bpm,
-            "--"
-        );
+        lv_label_set_text(label_bpm, "--");
     }
 
     if (label_spo2 != NULL) {
-        lv_label_set_text(
-            label_spo2,
-            "--"
-        );
+        lv_label_set_text(label_spo2, "--");
     }
 
     if (label_glucose != NULL) {
-        lv_label_set_text(
-            label_glucose,
-            "--"
-        );
+        lv_label_set_text(label_glucose, "--");
     }
 
-    if (history_chart != NULL && history_series != NULL) {
+    if (
+        history_chart != NULL &&
+        history_series != NULL
+    ) {
         for (int i = 0; i < MAX_MEASUREMENTS; i++) {
             lv_chart_set_value_by_id(
                 history_chart,
@@ -1837,7 +1822,6 @@ static void lvgl_setup() {
     );
 
     tft.begin();
-
     tft.setRotation(0);
 
     lv_init();
@@ -1850,7 +1834,6 @@ static void lvgl_setup() {
     );
 
     touchscreen.begin();
-
     touchscreen.setRotation(0);
 
     lv_disp_draw_buf_init(
@@ -1866,7 +1849,6 @@ static void lvgl_setup() {
 
     disp_drv.hor_res = SCREEN_WIDTH;
     disp_drv.ver_res = SCREEN_HEIGHT;
-
     disp_drv.flush_cb = my_disp_flush;
     disp_drv.draw_buf = &draw_buf;
 
@@ -1881,14 +1863,16 @@ static void lvgl_setup() {
 
     lv_indev_drv_register(&indev_drv);
 
-    // Cria as telas.
     lv_create_splash();
     lv_create_main();
     lv_create_history();
 
+    // A tela inicial e carregada uma unica vez.
     lv_scr_load(scr_splash);
 
     splash_start_ms = millis();
+    splash_finished = false;
+    history_screen_open = false;
 
     Serial.println(
         "Display inicializado."
@@ -1897,18 +1881,15 @@ static void lvgl_setup() {
 
 // =====================================================
 // LOOP DO DISPLAY
-// Nao chamar lv_timer_handler aqui.
-// O .ino ja deve chama-lo no loop principal.
+// O .ino chama lv_timer_handler()
 // =====================================================
 
 static void display_loop() {
-    static bool splash_finished = false;
-
-    // Tela de carregamento durante 10 segundos.
+    // A transicao da calibracao ocorre apenas uma vez.
     if (!splash_finished) {
-        if (
-            millis() - splash_start_ms >= SPLASH_MS
-        ) {
+        if (millis() - splash_start_ms >= SPLASH_MS) {
+            splash_finished = true;
+
             if (spinner != NULL) {
                 lv_obj_del(spinner);
                 spinner = NULL;
@@ -1918,8 +1899,6 @@ static void display_loop() {
                 lv_scr_load(scr_main);
             }
 
-            splash_finished = true;
-
             Serial.println(
                 "Tela principal carregada."
             );
@@ -1928,7 +1907,8 @@ static void display_loop() {
         return;
     }
 
-    // Solicitação de abertura do histórico pelo touch.
+    // Mantido como seguranca para solicitacoes de toque.
+    // O botao HISTORICO usa diretamente o evento LVGL.
     if (history_touch_request) {
         history_touch_request = false;
 
@@ -1938,15 +1918,12 @@ static void display_loop() {
     }
 
     update_measurement_counter();
-
     update_history_screen();
-
     check_measurement_completion();
 }
 
 // =====================================================
 // FUNCOES DE COMPATIBILIDADE
-// Para chamadas de outros arquivos do projeto.
 // =====================================================
 
 static void addMeasurementToHistory(float glucose) {
